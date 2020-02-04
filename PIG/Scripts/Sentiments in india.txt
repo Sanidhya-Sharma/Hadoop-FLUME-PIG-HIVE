@@ -1,0 +1,89 @@
+--UDF imports:- 
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-hadoop-compat-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-pig-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-core-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/json-simple-1.1.1.jar';
+
+--Load Data and defining schema 
+load_tweets = LOAD '/user/flume/tweets/' USING PigStorage('\n') AS (line:chararray,location:chararray,text:chararray);
+DEFINE JsonStringToMap com.twitter.elephantbird.pig.piggybank.JsonStringToMap();
+Data = FOREACH load_tweets GENERATE JsonStringToMap(line);
+
+--limit recorsds to be evaluated 
+--Data = LIMIT Data 10000;
+
+--Declaring Data sets 
+tweet_info = FOREACH Data GENERATE 
+json#'created_at' AS created_at,
+JsonStringToMap(json#'user')#'screen_name' AS username,
+json#'id' AS id:int, 
+json#'lang' AS lang, 
+JsonStringToMap(json#'user')#'location' AS location,
+json#'text' AS text;
+
+
+--filter location
+filtered_data = FILTER tweet_info BY location IS NOT NULL 
+                    AND location =='Bengaluru South' 
+                    OR location =='Bengaluru'
+                    OR location =='Chennai'
+                    OR location =='Hyderabad' 
+                    OR location =='Mumbai' 
+                    OR location =='Kolkata'
+                    OR location =='Ahmedabad' 
+                    OR location =='Pune'
+                    OR location =='Surat' 
+                    OR location =='Patna' 
+                    OR location =='Delhi'
+                    OR location =='Visakhapatnam'
+                    OR location =='Kanpur'
+                    OR location =='Gurgaon'
+                    OR location =='Noida'
+                    OR location =='Rajendran Nagar'
+                    OR location =='Jaipur'
+                    OR location =='Haveli'
+                    OR location =='Navi Mumbai'
+                    OR location =='Lucknow'
+                    OR location =='Varanasi';
+
+
+--cleaning the text:- 
+tweet_cleaner = FOREACH filtered_data GENERATE location, REPLACE(text,'([^a-zA-Z0-9#@\\s]+)', '') AS text;
+
+--flattening text as word:-
+tokens = foreach tweet_cleaner generate location,text, FLATTEN(TOKENIZE(text)) As word;
+
+--Importing AFFIN Dictionary with word and rating fields:-
+dictionary = load '/AFFIN_Dictionary/AFINN-111.txt' using PigStorage('\t') AS (word:chararray,rating:int);
+
+--joining tokens and word by dictionary:- 
+word_rating = join tokens by word left outer, dictionary by word using 'replicated';
+
+--describe word_rating;
+
+--generating id, text and rating:-
+rating = foreach word_rating generate tokens::location as location,tokens::text as text, dictionary::rating as rate;
+
+--grouping:- 
+word_group = group rating by (location,text);
+
+--generating average rating for each (id,text):-
+avg_rate = foreach word_group generate group as gp, AVG(rating.rate) as tweet_rating;
+
+--filtering tweets with no ratings:-
+f1_filter  = Filter avg_rate by tweet_rating is not NULL;
+
+sortter = foreach f1_filter generate flatten(gp), tweet_rating,
+(
+ CASE
+   WHEN tweet_rating >= 2.5 THEN 'Strong Positive'
+   WHEN tweet_rating > 0.0 and  tweet_rating < 2.5 THEN 'Positive'
+   WHEN tweet_rating == 0.0 THEN 'neutral'
+   WHEN tweet_rating < 0.0 and  tweet_rating > -2.5 THEN 'negative'
+   WHEN tweet_rating <= -2.5 THEN 'Strong negative'
+ END
+);
+
+Dump sortter ;
+
+STORE f1_filter INTO '/user/flume/tweet_sentiment_data.csv' using PigStorage(',');

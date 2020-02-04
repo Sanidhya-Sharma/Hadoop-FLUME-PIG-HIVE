@@ -1,0 +1,43 @@
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-hadoop-compat-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-pig-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-core-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/json-simple-1.1.1.jar';
+
+/*dictionary = load '/Resource/Country_Dictionary.txt' using PigStorage('\t') AS(loc:chararray);*/
+
+load_tweets = LOAD '/user/flume/tweets/' USING PigStorage('\n') AS (line:chararray);
+DEFINE JsonStringToMap com.twitter.elephantbird.pig.piggybank.JsonStringToMap();
+Data = FOREACH load_tweets GENERATE JsonStringToMap(line);
+Data = LIMIT Data 1000;
+
+--Declaring Data sets 
+tweet_info = FOREACH Data GENERATE 
+json#'created_at' AS created_at,
+JsonStringToMap(json#'user')#'screen_name' AS username,
+json#'id' AS id:chararray, 
+json#'lang' AS lang, 
+json#'text' AS text,
+JsonStringToMap(json#'user')#'location' AS location;
+
+-- Remove URLs
+urls_clean = FOREACH tweet_info GENERATE id,username,lang,location, REPLACE(text, '(http://\\S+)', '') AS url_clean;
+
+-- Remove non-characters
+nonchars_clean = FOREACH urls_clean GENERATE id,username,lang,location, REPLACE(url_clean, '([^a-zA-Z0-9\\s]+)', '') AS nonchar_clean;
+
+-- Remove Null location
+filtered_data = FILTER nonchars_clean BY location IS NOT NULL;
+
+/*
+-- Remove empty rows
+empty_rows_clean = FILTER nonchars_clean BY (id MATCHES '541-.*' OR id MATCHES '602-.*' OR id MATCHES '668-.*' OR id MATCHES '686-.*' OR id MATCHES '694-.*' OR id MATCHES '700-.*');
+/empty_rows_clean = DISTINCT empty_rows_clean;
+
+
+STORE empty_rows_clean INTO 'cleaned_tweets';*/
+
+
+DUMP filtered_data;
+
+--STORE tweet_info INTO '/user/admin/sample/tweet_info_10.csv';
+

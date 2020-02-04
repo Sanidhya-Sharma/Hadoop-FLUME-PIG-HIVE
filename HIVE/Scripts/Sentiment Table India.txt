@@ -1,0 +1,24 @@
+-- Dropping Database if exist
+DROP DATABASE IF EXISTS sentiment_db CASCADE;
+
+-- Creating a Database
+CREATE DATABASE sentiment_db;  -- Database for Loading CSV Input File  
+
+--Dropping External table if exist
+DROP TABLE IF EXISTS sentiment_db.sentiment_India; 
+
+-- Creating two tables to load input files
+CREATE EXTERNAL TABLE sentiment_db.sentiment_India
+(  
+  `word` string,
+  `location` string,
+  `index` double,
+  `sentiment` string
+)
+ROW FORMAT DELIMITED
+
+FIELDS TERMINATED BY ','
+
+STORED AS TEXTFILE
+
+LOCATION 'hdfs://sandbox-hdp.hortonworks.com:8020/user/flume/tweet_sentiment_data(India).csv/';

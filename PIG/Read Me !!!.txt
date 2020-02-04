@@ -1,0 +1,9 @@
+---------------------------**IMPORTANT**------------------------------------------
+
+SOME PIG SCRIPTS USE DICTIONARIES:
+
+Store the dictionaries in location as " Dictionary = Load /Dictionary/your dict.txt" 
+
+1. AFFIN (Marking Sentiment values to each words either adjective or verb)
+2. BadWords (Eliminating bad language used on twitter)
+3. StopWords (Eliminating the "is, and, the.....etc ")

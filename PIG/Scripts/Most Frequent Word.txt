@@ -1,0 +1,70 @@
+--UDF IMPORTS:
+--JSON (Elephant Bird JSON Mapping)
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-hadoop-compat-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-pig-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-core-4.1.jar';
+
+--JSON (Simple)
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/json-simple-1.1.1.jar';
+
+--Load Data and defining schema 
+load_tweets = LOAD '/user/flume/tweets/' USING PigStorage('\n') AS (line:CHARARRAY);
+
+--Loading Stopwords List
+stoplist = LOAD '/StopWords(825)/StopWords.txt' USING TextLoader AS (stop:CHARARRAY);
+
+--Loading Bad Words List
+badlist = LOAD '/BadWords/BadWords(418).txt' USING TextLoader AS (bad:CHARARRAY);
+
+--Defining JSTM(JsonStringToMap) for nested JSON values 
+DEFINE JsonStringToMap com.twitter.elephantbird.pig.piggybank.JsonStringToMap();
+Data = FOREACH load_tweets GENERATE JsonStringToMap(line);
+
+--limit recorsds to be evaluated 
+/*Data = LIMIT Data 10;*/
+
+--Mapping JSON values in "Data" Sets 
+tweet_info = FOREACH Data GENERATE 
+json#'created_at' AS created_at,
+JsonStringToMap(json#'user')#'screen_name' AS username,
+json#'id' AS id:int, 
+json#'lang' AS lang, 
+json#'text' AS text,
+JsonStringToMap(json#'user')#'location' AS location;
+
+tweets = FOREACH tweet_info GENERATE location, REPLACE(text,'([^a-zA-Z0-9#@\\s]+)|(http[^ ]*)|(www\\.[^ ]*)|(RT)|#\\s*(\\w+)|@\\s*(\\w+)|(,)', '') AS text;
+
+--Remove non-characters (Text Cleaning,lowering,replaceing,trimming and Tokenising)
+words = FOREACH tweets GENERATE FLATTEN(TOKENIZE(REPLACE(LOWER(TRIM(text)),'[\\p{Punct},\\p{Cntrl}]',''))) AS word;
+
+--Stop Words Dictionary comparison
+words_stopword_join = JOIN words BY word LEFT, stoplist BY stop;
+
+--Stop Words Filtering
+stop_words_filter = FILTER words_stopword_join BY stoplist::stop IS NULL;
+
+
+phase1_filtered = FOREACH stop_words_filter GENERATE word;   --Phase 1 filtering Stopwords Done !
+
+--Bad Words Dictionary comparison 
+bad_word_join = JOIN phase1_filtered BY word LEFT, badlist BY bad;
+
+--Bad Words Filtering 
+bad_word_filter = FILTER bad_word_join BY badlist::bad IS NULL;
+
+
+phase2_filtererd = FOREACH bad_word_filter GENERATE word;    --Phase 2 filtering Bad words removed !
+
+--Grouping coloum 1
+grouper = GROUP phase2_filtererd BY (CHARARRAY)$0;
+
+--counting the grouped words
+filtered = FOREACH grouper GENERATE group AS words, COUNT($1) as ct;
+
+unmix = FILTER filtered BY $1 IS NOT NULL;
+
+unmix_final = ORDER unmix BY $1 DESC, $0 ASC;
+
+
+DUMP unmix_final;
+

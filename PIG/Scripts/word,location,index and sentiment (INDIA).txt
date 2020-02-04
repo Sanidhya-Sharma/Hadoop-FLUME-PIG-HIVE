@@ -1,0 +1,122 @@
+--UDF IMPORTS:
+--JSON (Elephant Bird JSON Mapping)
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-hadoop-compat-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-pig-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-core-4.1.jar';
+
+--JSON (Simple)
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/json-simple-1.1.1.jar';
+
+--Hcatalog (PIG to HIVE)
+/*
+REGISTER '/usr/hdp/2.6.5.0-292/hive-hcatalog/share/hcatalog/hive-hcatalog-pig-adapter.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/hive-hcatalog/share/hcatalog/hive-hcatalog-core.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/hive-hcatalog/share/hcatalog/hive-hcatalog-hbase-storage-handler-0.13.1.jar';
+*/
+
+--Load Data and defining schema 
+load_tweets = LOAD '/user/flume/tweets/' USING PigStorage('\n') AS (line:chararray,location:chararray,hashtags:chararray,cnt:int);
+
+--Defining JSTM(JsonStringToMap) for nested JSON values 
+DEFINE JsonStringToMap com.twitter.elephantbird.pig.piggybank.JsonStringToMap();
+Data = FOREACH load_tweets GENERATE JsonStringToMap(line);
+
+--limit recorsds to be evaluated 
+/*Data = LIMIT Data 10;*/
+
+--Mapping JSON values in "Data" Sets 
+tweet_info = FOREACH Data GENERATE 
+json#'created_at' AS created_at,
+JsonStringToMap(json#'user')#'screen_name' AS username,
+json#'id' AS id:int, 
+json#'lang' AS lang, 
+json#'text' AS text,
+JsonStringToMap(json#'user')#'location' AS location;
+
+--Upper Case the first letter for Location
+Upper_case = FOREACH tweet_info GENERATE UCFIRST(location) AS location,text;
+
+--Filter Null locations and cities in India
+filtered_data = FILTER Upper_case BY location IS NOT NULL 
+                    AND location MATCHES 'Bengaluru South' 
+                    OR location MATCHES 'Bengaluru'
+                    OR location MATCHES 'Chennai'
+                    OR location MATCHES 'Hyderabad' 
+                    OR location MATCHES 'Mumbai' 
+                    OR location MATCHES 'Kolkata'
+                    OR location MATCHES 'Ahmedabad' 
+                    OR location MATCHES 'Pune'
+                    OR location MATCHES 'Surat' 
+                    OR location MATCHES 'Patna' 
+                    OR location MATCHES 'Delhi'
+                    OR location MATCHES 'Visakhapatnam'
+                    OR location MATCHES 'Kanpur'
+                    OR location MATCHES 'Gurgaon'
+                    OR location MATCHES 'Noida'
+                    OR location MATCHES 'Rajendran Nagar'
+                    OR location MATCHES 'Jaipur'
+                    OR location MATCHES 'Haveli'
+                    OR location MATCHES 'Navi Mumbai'
+                    OR location MATCHES 'Lucknow'
+		    OR location MATCHES 'Varanasi';
+                 		                 
+
+-- Remove non-characters except for # and @
+tweets = FOREACH filtered_data GENERATE location, REPLACE(text,'([^a-zA-Z0-9#@\\s]+)|(http[^ ]*)|(www\\.[^ ]*)', '') AS text;
+
+-- Tokenize each tweet message
+tweetwords = FOREACH tweets GENERATE location,text, FLATTEN( TOKENIZE(text) ) AS word, FLATTEN( TOKENIZE(text) ) AS words;
+
+-- Search for only hashtags in the tweets
+hashtags = FILTER tweetwords BY UPPER(word) MATCHES '#\\s*(\\w+)';
+
+--Schema for word rating 
+tokens = FOREACH hashtags GENERATE word, words, location, text ;
+
+--Importing AFFIN Dictionary with word and rating fields:-
+dictionary = LOAD '/AFFIN_Dictionary/AFINN-111.txt' USING PigStorage('\t') AS (word:chararray,rating:int);
+
+--joining tokens and word by dictionary:- 
+word_rating = JOIN tokens BY words LEFT OUTER, dictionary BY word USING 'replicated';
+
+/*describe word_rating;*/ --describing word_rating Schema
+
+--generating id, text and rating:-
+rating = FOREACH word_rating GENERATE tokens::location AS location,tokens::word AS word,tokens::text AS text, dictionary::rating AS rate;
+
+--grouping:- 
+word_group = GROUP rating BY (word,location);   --i removed "text" as it brings text to the data 
+
+--generating average rating for each (id,text):-
+avg_rate = FOREACH word_group GENERATE group AS gp, AVG(rating.rate) AS tweet_rating;
+
+--filtering tweets with no ratings:-
+f1_filter  = FILTER avg_rate BY tweet_rating IS NOT NULL;
+
+--final result variable
+sortter = FOREACH f1_filter GENERATE FLATTEN (gp) AS (word,location), tweet_rating AS index,
+(
+ CASE
+   WHEN tweet_rating >= 3.0 THEN 'Strong Positive'
+   WHEN tweet_rating > 0.0 AND  tweet_rating < 3.0 THEN 'Positive'
+   WHEN tweet_rating == 0.0 THEN 'neutral'                                   --Sentiment Rating System for tweet_rating
+   WHEN tweet_rating < 0.0 AND  tweet_rating > -3.0 THEN 'negative'
+   WHEN tweet_rating <= -3.0 THEN 'Strong negative'
+ END
+) AS sentiment ;
+
+--Describe schema
+Describe sortter;
+
+--Show the Schema in tabular notaion
+/*illustrate sortter;*/
+
+--Temporary View 
+DUMP sortter;
+
+--Storing values to HDFS
+STORE sortter INTO '/user/flume/tweet_sentiment_data.csv' USING PigStorage(',');
+
+--Storing Values to HIVE
+/*STORE sortter INTO 'sentiment_db.sentiment' USING org.apache.hive.hcatalog.pig.HCatStorer();*/
+

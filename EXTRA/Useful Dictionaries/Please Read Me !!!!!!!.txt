@@ -1,0 +1,5 @@
+Some of these Dictinaries are used by Some Pig Scripts 
+
+-Bad Words (Custom made by me)
+-Stop Words
+-AFINN-2011 (2500 words )

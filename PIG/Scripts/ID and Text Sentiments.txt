@@ -1,0 +1,39 @@
+--UDF imports:- 
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-hadoop-compat-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-pig-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-core-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/json-simple-1.1.1.jar';
+
+--loading tweets with mapping as myMap:-
+load_tweets = LOAD '/user/flume/tweets/FlumeData.1570695068458.json' USING com.twitter.elephantbird.pig.load.JsonLoader('-nestedLoad') AS myMap;
+
+--mapping id and text for each tweet:-
+extract_details = FOREACH load_tweets GENERATE myMap#'id' as id,myMap#'text' as text;
+
+--cleaning the text:- 
+tweet_cleaner = FOREACH extract_details GENERATE id, REPLACE(text,'([^a-zA-Z0-9#@\\s]+)', '') AS text;
+
+--flattening text as word:-
+tokens = foreach tweet_cleaner generate id,text, FLATTEN(TOKENIZE(text)) As word;
+
+--Importing AFFIN Dictionary with word and rating fields:-
+dictionary = load '/AFFIN_Dictionary/AFINN-111.txt' using PigStorage('\t') AS(word:chararray,rating:int);
+
+--joining tokens and word by dictionary:- 
+word_rating = join tokens by word left outer, dictionary by word using 'replicated';
+
+--describe word_rating;
+
+--generating id, text and rating:-
+rating = foreach word_rating generate tokens::id as id,tokens::text as text, dictionary::rating as rate;
+
+--grouping:- 
+word_group = group rating by (id,text);
+
+--generating average rating for each (id,text):-
+avg_rate = foreach word_group generate group, AVG(rating.rate) as tweet_rating;
+
+--filtering tweets with no ratings:-
+f1_filter  = Filter avg_rate by tweet_rating is not NULL;
+
+Dump f1_filter;

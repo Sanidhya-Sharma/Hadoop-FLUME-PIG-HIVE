@@ -1,0 +1,46 @@
+--UDF imports 
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-hadoop-compat-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-pig-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/elephant-bird-core-4.1.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/pig/lib/json-simple-1.1.1.jar';
+
+--Load Data and defining schema 
+load_tweets = LOAD '/user/flume/tweets/' USING PigStorage('\n') AS (line:chararray);
+DEFINE JsonStringToMap com.twitter.elephantbird.pig.piggybank.JsonStringToMap();
+Data = FOREACH load_tweets GENERATE JsonStringToMap(line);
+
+--limit recorsds to be evaluated 
+Data = LIMIT Data 10000;
+
+--Declaring Data sets 
+tweet_info = FOREACH Data GENERATE 
+json#'created_at' AS created_at,
+JsonStringToMap(json#'user')#'screen_name' AS username,
+json#'id' AS id:int, 
+json#'lang' AS lang, 
+json#'text' AS text,
+JsonStringToMap(json#'user')#'location' AS location;
+
+--Filter Null locations 
+filtered_data = FILTER tweet_info BY location IS NOT NULL;
+
+-- Remove non-characters except for # and @
+tweets = FOREACH filtered_data GENERATE id, REPLACE(text, '([^a-zA-Z0-9#@\\s]+)', '') AS text;
+
+-- First finding hashtags(#)
+-- Tokenize each tweet message
+tweetwords = FOREACH tweets GENERATE id, FLATTEN( TOKENIZE(text) ) AS word;
+
+-- Search for only hashtags in the tweets
+hashtags = FILTER tweetwords BY UPPER(word) MATCHES '#\\s*(\\w+)';
+
+grouper = GROUP hashtags BY word;
+
+gp = FOREACH grouper GENERATE group AS word, COUNT(hashtags) as cnt;
+f = order gp by cnt desc;
+g = limit f 100;
+
+DUMP g;
+
+--STORE tweet_info INTO '/user/admin/sample/tweet_info_10.csv';
+

@@ -1,0 +1,22 @@
+-- Dropping Database if exist
+DROP DATABASE IF EXISTS sentiment_db CASCADE;
+
+-- Creating a Database
+CREATE DATABASE sentiment_db;  -- Database for Loading CSV Input File  
+
+--Dropping External table if exist
+DROP TABLE IF EXISTS sentiment_db.Most_Frequent_Word; 
+
+-- Creating two tables to load input files
+CREATE EXTERNAL TABLE sentiment_db.Most_Frequent_Word
+(  
+  `word` string,
+  `Count` int
+)
+ROW FORMAT DELIMITED
+
+FIELDS TERMINATED BY ','
+
+STORED AS TEXTFILE
+
+LOCATION 'hdfs://sandbox-hdp.hortonworks.com:8020/user/flume/Most_Frequent_Word.csv/';

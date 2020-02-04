@@ -1,0 +1,16 @@
+--Hcatalog (PIG to HIVE)
+
+REGISTER '/usr/hdp/2.6.5.0-292/hive-hcatalog/share/hcatalog/hive-hcatalog-pig-adapter.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/hive-hcatalog/share/hcatalog/hive-hcatalog-core.jar';
+REGISTER '/usr/hdp/2.6.5.0-292/hive-hcatalog/share/hcatalog/hive-hcatalog-hbase-storage-handler-0.13.1.jar';
+
+
+
+//matter script etc
+{
+   ///script
+}
+
+Storing Values to HIVE (Using Hcatalog)
+
+STORE sortter INTO 'sentiment_db.sentiment' USING org.apache.hive.hcatalog.pig.HCatStorer();

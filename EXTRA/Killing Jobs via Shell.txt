@@ -1,0 +1,28 @@
+(SHELL IN A BOX):-
+
+Depending on the version, do:
+
+
+
+version <2.3.0
+
+Kill a hadoop job:
+
+<hadoop job -kill $jobId> (no Dollar sign for windows)
+
+You can get a list of all jobId's doing:
+
+<hadoop job -list>
+
+
+
+
+version >=2.3.0
+
+Kill a hadoop job:
+
+<yarn application -kill $ApplicationId>
+
+You can get a list of all ApplicationId's doing:
+
+<yarn application -list>
