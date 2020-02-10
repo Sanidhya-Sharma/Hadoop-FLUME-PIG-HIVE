@@ -1,0 +1,6 @@
+To start Hadoop:
+
+1.) Login with admin privilages 
+2.) Type "cd /usr/hdp/current/flume-server"     (Gives path of Flume directory)
+3.) Type "flume-ng agent --conf conf --conf-file /etc/flume/2.6.5.0-292/0/TwitterStream.conf --name TwitterAgent -Dflume.root.logger=INFO,console"
+4.) Press "Cntrl + C" to kill the Flume Demon 
